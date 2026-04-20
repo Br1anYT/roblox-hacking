@@ -1,0 +1,1259 @@
+--[[
+    ╔══════════════════════════════════════════════════════════════╗
+    ║         Babyutmonn2o22Mains Scripts - Dashboard UI          ║
+    ║         Educational Portfolio Project - Roblox Studio       ║
+    ║         Teaches: TweenService, GUI Layout, Dragging,        ║
+    ║                  Tab Systems, Profile Integration           ║
+    ╚══════════════════════════════════════════════════════════════╝
+    
+    LEARNING OBJECTIVES:
+    - Advanced ScreenGui construction in Luau
+    - TweenService for smooth animations
+    - Draggable window implementation
+    - Dynamic tab management system
+    - Player thumbnail API usage
+    - Notification popup architecture
+    - Hover effect patterns
+    - Search/filter logic
+--]]
+
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+
+-- ============================================================
+-- CONSTANTS & THEME
+-- ============================================================
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Theme colors (students can swap these for the settings panel)
+local Theme = {
+    Background      = Color3.fromRGB(15, 15, 20),
+    Surface         = Color3.fromRGB(22, 22, 30),
+    SurfaceAlt      = Color3.fromRGB(28, 28, 38),
+    Panel           = Color3.fromRGB(18, 18, 25),
+    Accent          = Color3.fromRGB(120, 80, 255),
+    AccentHover     = Color3.fromRGB(150, 110, 255),
+    AccentDim       = Color3.fromRGB(60, 40, 130),
+    TextPrimary     = Color3.fromRGB(240, 240, 255),
+    TextSecondary   = Color3.fromRGB(150, 150, 175),
+    TextMuted       = Color3.fromRGB(90, 90, 110),
+    Stroke          = Color3.fromRGB(50, 50, 70),
+    StrokeAccent    = Color3.fromRGB(100, 70, 220),
+    Success         = Color3.fromRGB(80, 220, 140),
+    Warning         = Color3.fromRGB(255, 190, 60),
+    Danger          = Color3.fromRGB(255, 80, 80),
+    TabActive       = Color3.fromRGB(120, 80, 255),
+    TabInactive     = Color3.fromRGB(30, 30, 42),
+    TabHover        = Color3.fromRGB(40, 40, 55),
+    ScrollBar       = Color3.fromRGB(60, 60, 80),
+    Overlay         = Color3.fromRGB(0, 0, 0),
+}
+
+-- Tween presets
+local TWEEN_FAST   = TweenInfo.new(0.15, Enum.EasingStyle.Quad,   Enum.EasingDirection.Out)
+local TWEEN_MED    = TweenInfo.new(0.25, Enum.EasingStyle.Quart,  Enum.EasingDirection.Out)
+local TWEEN_SLOW   = TweenInfo.new(0.4,  Enum.EasingStyle.Quint,  Enum.EasingDirection.Out)
+local TWEEN_BOUNCE = TweenInfo.new(0.35, Enum.EasingStyle.Back,   Enum.EasingDirection.Out)
+
+-- ============================================================
+-- UTILITY HELPERS
+-- ============================================================
+
+--- Creates a UICorner with the given radius
+local function Corner(radius, parent)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius)
+    c.Parent = parent
+    return c
+end
+
+--- Creates a UIStroke
+local function Stroke(color, thickness, parent)
+    local s = Instance.new("UIStroke")
+    s.Color     = color
+    s.Thickness = thickness
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent    = parent
+    return s
+end
+
+--- Creates a UIGradient (vertical, two colors)
+local function Gradient(c0, c1, rotation, parent)
+    local g = Instance.new("UIGradient")
+    g.Color    = ColorSequence.new(c0, c1)
+    g.Rotation = rotation or 90
+    g.Parent   = parent
+    return g
+end
+
+--- Quick tween wrapper
+local function Tween(obj, info, props)
+    local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
+--- Adds hover color effect to a button-like frame
+local function AddHover(obj, normalColor, hoverColor, prop)
+    prop = prop or "BackgroundColor3"
+    obj.MouseEnter:Connect(function()
+        Tween(obj, TWEEN_FAST, {[prop] = hoverColor})
+    end)
+    obj.MouseLeave:Connect(function()
+        Tween(obj, TWEEN_FAST, {[prop] = normalColor})
+    end)
+end
+
+--- Creates a TextLabel with sensible defaults
+local function MakeLabel(props)
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Font                   = props.Font      or Enum.Font.GothamBold
+    lbl.Text                   = props.Text      or ""
+    lbl.TextColor3             = props.Color     or Theme.TextPrimary
+    lbl.TextSize               = props.Size      or 14
+    lbl.TextXAlignment         = props.XAlign    or Enum.TextXAlignment.Left
+    lbl.TextYAlignment         = props.YAlign    or Enum.TextYAlignment.Center
+    lbl.TextTruncate           = props.Truncate  or Enum.TextTruncate.None
+    lbl.Size                   = props.FrameSize or UDim2.new(1, 0, 1, 0)
+    lbl.Position               = props.Position  or UDim2.new(0, 0, 0, 0)
+    lbl.ZIndex                 = props.ZIndex    or 1
+    lbl.Parent                 = props.Parent
+    return lbl
+end
+
+--- Creates an ImageLabel
+local function MakeImage(props)
+    local img = Instance.new("ImageLabel")
+    img.BackgroundTransparency = 1
+    img.Image                  = props.Image    or ""
+    img.Size                   = props.Size     or UDim2.new(1, 0, 1, 0)
+    img.Position               = props.Position or UDim2.new(0, 0, 0, 0)
+    img.ImageColor3            = props.Color    or Color3.new(1, 1, 1)
+    img.ZIndex                 = props.ZIndex   or 1
+    img.Parent                 = props.Parent
+    return img
+end
+
+-- ============================================================
+-- ROOT SCREENGUI
+-- ============================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name                = "BabyutmonnDashboard"
+ScreenGui.ResetOnSpawn        = false
+ScreenGui.ZIndexBehavior      = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset      = true
+ScreenGui.Parent              = PlayerGui
+
+-- ============================================================
+-- MAIN WINDOW
+-- ============================================================
+local WIN_W, WIN_H = 780, 520
+
+local MainWindow = Instance.new("Frame")
+MainWindow.Name             = "MainWindow"
+MainWindow.Size             = UDim2.new(0, WIN_W, 0, WIN_H)
+MainWindow.Position         = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+MainWindow.BackgroundColor3 = Theme.Background
+MainWindow.BorderSizePixel  = 0
+MainWindow.ClipsDescendants = true
+MainWindow.ZIndex           = 10
+MainWindow.Parent           = ScreenGui
+Corner(14, MainWindow)
+Stroke(Theme.Stroke, 1.5, MainWindow)
+-- Subtle inner gradient
+Gradient(
+    Color3.fromRGB(20, 20, 28),
+    Color3.fromRGB(13, 13, 18),
+    120,
+    MainWindow
+)
+
+-- Window entrance animation
+MainWindow.Size = UDim2.new(0, WIN_W * 0.92, 0, WIN_H * 0.92)
+MainWindow.BackgroundTransparency = 1
+Tween(MainWindow, TWEEN_BOUNCE, {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H),
+    BackgroundTransparency = 0,
+})
+
+-- ============================================================
+-- TOP BAR (Draggable)
+-- ============================================================
+local TopBar = Instance.new("Frame")
+TopBar.Name             = "TopBar"
+TopBar.Size             = UDim2.new(1, 0, 0, 46)
+TopBar.BackgroundColor3 = Theme.Surface
+TopBar.BorderSizePixel  = 0
+TopBar.ZIndex           = 11
+TopBar.Parent           = MainWindow
+Corner(14, TopBar)
+Stroke(Theme.Stroke, 1, TopBar)
+-- Extend bottom corners to blend with content area
+local TopBarFill = Instance.new("Frame")
+TopBarFill.Size             = UDim2.new(1, 0, 0, 14)
+TopBarFill.Position         = UDim2.new(0, 0, 1, -14)
+TopBarFill.BackgroundColor3 = Theme.Surface
+TopBarFill.BorderSizePixel  = 0
+TopBarFill.ZIndex           = 11
+TopBarFill.Parent           = TopBar
+
+-- Accent stripe at very top of bar
+local AccentLine = Instance.new("Frame")
+AccentLine.Size             = UDim2.new(0.4, 0, 0, 2)
+AccentLine.Position         = UDim2.new(0.3, 0, 0, 0)
+AccentLine.BackgroundColor3 = Theme.Accent
+AccentLine.BorderSizePixel  = 0
+AccentLine.ZIndex           = 12
+AccentLine.Parent           = TopBar
+Corner(2, AccentLine)
+Gradient(
+    Theme.AccentDim,
+    Theme.Accent,
+    0,
+    AccentLine
+)
+
+-- Window icon (decorative dot cluster)
+local function MakeDot(xOff, color)
+    local d = Instance.new("Frame")
+    d.Size             = UDim2.new(0, 8, 0, 8)
+    d.Position         = UDim2.new(0, xOff, 0.5, -4)
+    d.BackgroundColor3 = color
+    d.BorderSizePixel  = 0
+    d.ZIndex           = 12
+    d.Parent           = TopBar
+    Corner(4, d)
+    return d
+end
+
+-- Title label
+local TitleLabel = MakeLabel({
+    Text      = "✦  Babyutmonn2o22Mains Scripts",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.TextPrimary,
+    Size      = 15,
+    FrameSize = UDim2.new(1, -180, 1, 0),
+    Position  = UDim2.new(0, 18, 0, 0),
+    ZIndex    = 12,
+    Parent    = TopBar,
+    XAlign    = Enum.TextXAlignment.Left,
+})
+-- Subtle glow effect via a shadow label
+local TitleShadow = MakeLabel({
+    Text      = "✦  Babyutmonn2o22Mains Scripts",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.Accent,
+    Size      = 15,
+    FrameSize = UDim2.new(1, -180, 1, 0),
+    Position  = UDim2.new(0, 19, 0, 1),
+    ZIndex    = 11,
+    Parent    = TopBar,
+    XAlign    = Enum.TextXAlignment.Left,
+})
+TitleShadow.TextTransparency = 0.7
+
+-- ── WINDOW CONTROL BUTTONS ────────────────────────────────
+
+local function MakeWindowBtn(xFromRight, bgColor, symbol, tipText)
+    local btn = Instance.new("TextButton")
+    btn.Size                = UDim2.new(0, 28, 0, 28)
+    btn.Position            = UDim2.new(1, -xFromRight, 0.5, -14)
+    btn.BackgroundColor3    = bgColor
+    btn.Text                = symbol
+    btn.TextColor3          = Theme.TextPrimary
+    btn.Font                = Enum.Font.GothamBold
+    btn.TextSize            = 13
+    btn.BorderSizePixel     = 0
+    btn.ZIndex              = 13
+    btn.Parent              = TopBar
+    Corner(6, btn)
+    AddHover(btn, bgColor, bgColor:Lerp(Color3.new(1,1,1), 0.15))
+    return btn
+end
+
+local CloseBtn    = MakeWindowBtn(38,  Theme.Danger,   "✕")
+local MinimizeBtn = MakeWindowBtn(74,  Color3.fromRGB(50,50,70),  "─")
+local SettingsBtn = MakeWindowBtn(110, Color3.fromRGB(50,50,70),  "⚙")
+
+-- ============================================================
+-- DRAGGING LOGIC
+-- ============================================================
+local dragging, dragStart, startPos = false, nil, nil
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = MainWindow.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainWindow.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ============================================================
+-- MINIMIZE / CLOSE BEHAVIOR
+-- ============================================================
+local minimized = false
+local ContentArea  -- declared here, defined below
+
+CloseBtn.MouseButton1Click:Connect(function()
+    Tween(MainWindow, TWEEN_MED, {
+        Size = UDim2.new(0, WIN_W * 0.85, 0, WIN_H * 0.85),
+        BackgroundTransparency = 1,
+    })
+    task.delay(0.3, function()
+        ScreenGui:Destroy()
+    end)
+end)
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        Tween(MainWindow, TWEEN_MED, { Size = UDim2.new(0, WIN_W, 0, 46) })
+    else
+        Tween(MainWindow, TWEEN_MED, { Size = UDim2.new(0, WIN_W, 0, WIN_H) })
+    end
+end)
+
+-- ============================================================
+-- CONTENT AREA (below top bar)
+-- ============================================================
+ContentArea = Instance.new("Frame")
+ContentArea.Name             = "ContentArea"
+ContentArea.Size             = UDim2.new(1, 0, 1, -46)
+ContentArea.Position         = UDim2.new(0, 0, 0, 46)
+ContentArea.BackgroundTransparency = 1
+ContentArea.ZIndex           = 10
+ContentArea.Parent           = MainWindow
+
+-- ============================================================
+-- LEFT SIDEBAR (Tab list + Search + Profile)
+-- ============================================================
+local Sidebar = Instance.new("Frame")
+Sidebar.Name             = "Sidebar"
+Sidebar.Size             = UDim2.new(0, 195, 1, -10)
+Sidebar.Position         = UDim2.new(0, 8, 0, 5)
+Sidebar.BackgroundColor3 = Theme.Panel
+Sidebar.BorderSizePixel  = 0
+Sidebar.ZIndex           = 10
+Sidebar.Parent           = ContentArea
+Corner(10, Sidebar)
+Stroke(Theme.Stroke, 1, Sidebar)
+
+-- ── SEARCH BAR ────────────────────────────────────────────
+local SearchContainer = Instance.new("Frame")
+SearchContainer.Size             = UDim2.new(1, -16, 0, 32)
+SearchContainer.Position         = UDim2.new(0, 8, 0, 10)
+SearchContainer.BackgroundColor3 = Theme.SurfaceAlt
+SearchContainer.BorderSizePixel  = 0
+SearchContainer.ZIndex           = 11
+SearchContainer.Parent           = Sidebar
+Corner(8, SearchContainer)
+Stroke(Theme.Stroke, 1, SearchContainer)
+
+local SearchIcon = MakeLabel({
+    Text      = "🔍",
+    Size      = 16,
+    FrameSize = UDim2.new(0, 28, 1, 0),
+    Position  = UDim2.new(0, 2, 0, 0),
+    ZIndex    = 12,
+    Parent    = SearchContainer,
+    XAlign    = Enum.TextXAlignment.Center,
+    Color     = Theme.TextMuted,
+})
+
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size                = UDim2.new(1, -32, 1, 0)
+SearchBox.Position            = UDim2.new(0, 28, 0, 0)
+SearchBox.BackgroundTransparency = 1
+SearchBox.Text                = ""
+SearchBox.PlaceholderText     = "Search tabs..."
+SearchBox.PlaceholderColor3   = Theme.TextMuted
+SearchBox.TextColor3          = Theme.TextPrimary
+SearchBox.Font                = Enum.Font.Gotham
+SearchBox.TextSize            = 12
+SearchBox.TextXAlignment      = Enum.TextXAlignment.Left
+SearchBox.ClearTextOnFocus    = false
+SearchBox.ZIndex              = 12
+SearchBox.Parent              = SearchContainer
+
+-- ── TAB LIST (ScrollingFrame) ─────────────────────────────
+local TabListFrame = Instance.new("ScrollingFrame")
+TabListFrame.Name                = "TabList"
+TabListFrame.Size                = UDim2.new(1, -8, 1, -145)
+TabListFrame.Position            = UDim2.new(0, 4, 0, 50)
+TabListFrame.BackgroundTransparency = 1
+TabListFrame.BorderSizePixel     = 0
+TabListFrame.ScrollBarThickness  = 3
+TabListFrame.ScrollBarImageColor3 = Theme.ScrollBar
+TabListFrame.CanvasSize          = UDim2.new(0, 0, 0, 0)
+TabListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+TabListFrame.ZIndex              = 11
+TabListFrame.Parent              = Sidebar
+
+local TabListLayout = Instance.new("UIListLayout")
+TabListLayout.Padding       = UDim.new(0, 5)
+TabListLayout.SortOrder     = Enum.SortOrder.LayoutOrder
+TabListLayout.Parent        = TabListFrame
+
+-- ── ADD TAB BUTTON ────────────────────────────────────────
+local AddTabBtn = Instance.new("TextButton")
+AddTabBtn.Size             = UDim2.new(1, -16, 0, 30)
+AddTabBtn.Position         = UDim2.new(0, 8, 1, -112)
+AddTabBtn.BackgroundColor3 = Theme.AccentDim
+AddTabBtn.Text             = "＋  New Tab"
+AddTabBtn.TextColor3       = Theme.TextPrimary
+AddTabBtn.Font             = Enum.Font.GothamBold
+AddTabBtn.TextSize         = 13
+AddTabBtn.BorderSizePixel  = 0
+AddTabBtn.ZIndex           = 11
+AddTabBtn.Parent           = Sidebar
+Corner(8, AddTabBtn)
+AddHover(AddTabBtn, Theme.AccentDim, Theme.Accent)
+
+-- ── PROFILE SECTION ───────────────────────────────────────
+local ProfileSection = Instance.new("Frame")
+ProfileSection.Name             = "ProfileSection"
+ProfileSection.Size             = UDim2.new(1, -16, 0, 64)
+ProfileSection.Position         = UDim2.new(0, 8, 1, -74)
+ProfileSection.BackgroundColor3 = Theme.SurfaceAlt
+ProfileSection.BorderSizePixel  = 0
+ProfileSection.ZIndex           = 11
+ProfileSection.Parent           = Sidebar
+Corner(10, ProfileSection)
+Stroke(Theme.StrokeAccent, 1, ProfileSection)
+
+-- Avatar frame with rounded corners + accent ring
+local AvatarFrame = Instance.new("Frame")
+AvatarFrame.Size             = UDim2.new(0, 46, 0, 46)
+AvatarFrame.Position         = UDim2.new(0, 9, 0.5, -23)
+AvatarFrame.BackgroundColor3 = Theme.Accent
+AvatarFrame.BorderSizePixel  = 0
+AvatarFrame.ZIndex           = 12
+AvatarFrame.Parent           = ProfileSection
+Corner(23, AvatarFrame) -- full circle
+
+local AvatarImage = Instance.new("ImageLabel")
+AvatarImage.Size             = UDim2.new(1, -4, 1, -4)
+AvatarImage.Position         = UDim2.new(0, 2, 0, 2)
+AvatarImage.BackgroundColor3 = Theme.SurfaceAlt
+AvatarImage.Image            = "" -- set after load
+AvatarImage.BorderSizePixel  = 0
+AvatarImage.ZIndex           = 13
+AvatarImage.Parent           = AvatarFrame
+Corner(22, AvatarImage)
+
+-- Player name labels
+local ProfileName = MakeLabel({
+    Text      = "Loading...",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.TextPrimary,
+    Size      = 13,
+    FrameSize = UDim2.new(1, -70, 0, 24),
+    Position  = UDim2.new(0, 64, 0, 8),
+    ZIndex    = 12,
+    Parent    = ProfileSection,
+    XAlign    = Enum.TextXAlignment.Left,
+    Truncate  = Enum.TextTruncate.AtEnd,
+})
+
+local ProfileTag = MakeLabel({
+    Text      = "@...",
+    Font      = Enum.Font.Gotham,
+    Color     = Theme.TextMuted,
+    Size      = 11,
+    FrameSize = UDim2.new(1, -70, 0, 18),
+    Position  = UDim2.new(0, 64, 0, 32),
+    ZIndex    = 12,
+    Parent    = ProfileSection,
+    XAlign    = Enum.TextXAlignment.Left,
+    Truncate  = Enum.TextTruncate.AtEnd,
+})
+
+-- Load player info asynchronously (safe pattern for Studio + Live)
+task.spawn(function()
+    local success, thumbUrl = pcall(function()
+        return Players:GetUserThumbnailAsync(
+            LocalPlayer.UserId,
+            Enum.ThumbnailType.HeadShot,
+            Enum.ThumbnailSize.Size100x100
+        )
+    end)
+    if success and thumbUrl then
+        AvatarImage.Image = thumbUrl
+    end
+
+    ProfileName.Text = LocalPlayer.DisplayName
+    ProfileTag.Text  = "@" .. LocalPlayer.Name
+end)
+
+-- ============================================================
+-- MAIN EDITOR AREA (right of sidebar)
+-- ============================================================
+local EditorArea = Instance.new("Frame")
+EditorArea.Name             = "EditorArea"
+EditorArea.Size             = UDim2.new(1, -211, 1, -10)
+EditorArea.Position         = UDim2.new(0, 207, 0, 5)
+EditorArea.BackgroundColor3 = Theme.Panel
+EditorArea.BorderSizePixel  = 0
+EditorArea.ZIndex           = 10
+EditorArea.Parent           = ContentArea
+Corner(10, EditorArea)
+Stroke(Theme.Stroke, 1, EditorArea)
+
+-- Tab header strip at top of editor
+local TabHeader = Instance.new("Frame")
+TabHeader.Name             = "TabHeader"
+TabHeader.Size             = UDim2.new(1, 0, 0, 36)
+TabHeader.BackgroundColor3 = Theme.Surface
+TabHeader.BorderSizePixel  = 0
+TabHeader.ZIndex           = 11
+TabHeader.Parent           = EditorArea
+Corner(10, TabHeader)
+local TabHeaderFill = Instance.new("Frame")
+TabHeaderFill.Size             = UDim2.new(1, 0, 0, 10)
+TabHeaderFill.Position         = UDim2.new(0, 0, 1, -10)
+TabHeaderFill.BackgroundColor3 = Theme.Surface
+TabHeaderFill.BorderSizePixel  = 0
+TabHeaderFill.ZIndex           = 11
+TabHeaderFill.Parent           = TabHeader
+
+-- Active tab indicator label (shows current tab name in header)
+local HeaderTabName = MakeLabel({
+    Text      = "No Tab Selected",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.TextSecondary,
+    Size      = 13,
+    FrameSize = UDim2.new(1, -20, 1, 0),
+    Position  = UDim2.new(0, 14, 0, 0),
+    ZIndex    = 12,
+    Parent    = TabHeader,
+    XAlign    = Enum.TextXAlignment.Left,
+})
+
+-- Line count / info label on right of header
+local HeaderInfo = MakeLabel({
+    Text      = "Ln 1  Col 1",
+    Font      = Enum.Font.Code,
+    Color     = Theme.TextMuted,
+    Size      = 11,
+    FrameSize = UDim2.new(0, 120, 1, 0),
+    Position  = UDim2.new(1, -124, 0, 0),
+    ZIndex    = 12,
+    Parent    = TabHeader,
+    XAlign    = Enum.TextXAlignment.Right,
+})
+
+-- Container that holds the actual tab content pages
+local TabContentHolder = Instance.new("Frame")
+TabContentHolder.Name             = "TabContentHolder"
+TabContentHolder.Size             = UDim2.new(1, -16, 1, -52)
+TabContentHolder.Position         = UDim2.new(0, 8, 0, 44)
+TabContentHolder.BackgroundTransparency = 1
+TabContentHolder.ClipsDescendants = true
+TabContentHolder.ZIndex           = 10
+TabContentHolder.Parent           = EditorArea
+
+-- Empty state label (shown when no tabs exist)
+local EmptyLabel = MakeLabel({
+    Text      = "✦  Click  ＋ New Tab  to get started",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.TextMuted,
+    Size      = 15,
+    FrameSize = UDim2.new(1, 0, 1, 0),
+    ZIndex    = 11,
+    Parent    = TabContentHolder,
+    XAlign    = Enum.TextXAlignment.Center,
+    YAlign    = Enum.TextYAlignment.Center,
+})
+
+-- ============================================================
+-- NOTIFICATION SYSTEM
+-- ============================================================
+local NotifHolder = Instance.new("Frame")
+NotifHolder.Name              = "NotifHolder"
+NotifHolder.Size              = UDim2.new(0, 280, 1, 0)
+NotifHolder.Position          = UDim2.new(1, -290, 0, 0)
+NotifHolder.BackgroundTransparency = 1
+NotifHolder.ZIndex            = 50
+NotifHolder.Parent            = ScreenGui
+
+local NotifLayout = Instance.new("UIListLayout")
+NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifLayout.Padding           = UDim.new(0, 6)
+NotifLayout.Parent            = NotifHolder
+
+local NotifPadding = Instance.new("UIPadding")
+NotifPadding.PaddingBottom = UDim.new(0, 12)
+NotifPadding.Parent        = NotifHolder
+
+--- Shows a popup notification
+--- @param title  string  - Bold heading
+--- @param body   string  - Detail text
+--- @param kind   string  - "info" | "success" | "warning" | "danger"
+--- @param dur    number  - seconds before auto-dismiss
+local function Notify(title, body, kind, dur)
+    dur  = dur  or 3.5
+    kind = kind or "info"
+
+    local kindColor = ({
+        info    = Theme.Accent,
+        success = Theme.Success,
+        warning = Theme.Warning,
+        danger  = Theme.Danger,
+    })[kind] or Theme.Accent
+
+    -- Build notification frame
+    local nf = Instance.new("Frame")
+    nf.Size             = UDim2.new(1, 0, 0, 60)
+    nf.BackgroundColor3 = Theme.Surface
+    nf.BorderSizePixel  = 0
+    nf.ZIndex           = 51
+    nf.BackgroundTransparency = 1
+    nf.Parent           = NotifHolder
+    Corner(10, nf)
+    Stroke(kindColor, 1.5, nf)
+
+    -- Colored left stripe
+    local stripe = Instance.new("Frame")
+    stripe.Size             = UDim2.new(0, 4, 1, -16)
+    stripe.Position         = UDim2.new(0, 8, 0, 8)
+    stripe.BackgroundColor3 = kindColor
+    stripe.BorderSizePixel  = 0
+    stripe.ZIndex           = 52
+    stripe.Parent           = nf
+    Corner(2, stripe)
+
+    local nt = MakeLabel({
+        Text      = title,
+        Font      = Enum.Font.GothamBold,
+        Color     = Theme.TextPrimary,
+        Size      = 13,
+        FrameSize = UDim2.new(1, -60, 0, 22),
+        Position  = UDim2.new(0, 22, 0, 8),
+        ZIndex    = 52,
+        Parent    = nf,
+        XAlign    = Enum.TextXAlignment.Left,
+    })
+    local nb = MakeLabel({
+        Text      = body,
+        Font      = Enum.Font.Gotham,
+        Color     = Theme.TextSecondary,
+        Size      = 11,
+        FrameSize = UDim2.new(1, -60, 0, 18),
+        Position  = UDim2.new(0, 22, 0, 30),
+        ZIndex    = 52,
+        Parent    = nf,
+        XAlign    = Enum.TextXAlignment.Left,
+        Truncate  = Enum.TextTruncate.AtEnd,
+    })
+
+    -- Slide in
+    nf.Position = UDim2.new(1, 20, 0, 0)
+    Tween(nf, TWEEN_MED, { BackgroundTransparency = 0 })
+    Tween(nf, TWEEN_MED, { Position = UDim2.new(0, 0, 0, 0) })
+
+    -- Auto dismiss
+    task.delay(dur, function()
+        if nf and nf.Parent then
+            Tween(nf, TWEEN_MED, { BackgroundTransparency = 1, Position = UDim2.new(1, 20, 0, 0) })
+            task.delay(0.3, function()
+                if nf and nf.Parent then nf:Destroy() end
+            end)
+        end
+    end)
+
+    return nf
+end
+
+-- ============================================================
+-- TAB MANAGEMENT SYSTEM
+-- ============================================================
+
+local tabs        = {}   -- array of tab data tables
+local activeTabId = nil  -- currently selected tab's id
+local tabCounter  = 0    -- unique id counter
+
+--[[
+    Tab data structure:
+    {
+        id        : number   - unique identifier
+        name      : string   - display name
+        content   : string   - the TextBox content
+        sideBtn   : Frame    - the sidebar button widget
+        page      : Frame    - the editor content page
+        textBox   : TextBox  - the code-editing TextBox
+    }
+--]]
+
+--- Returns a tab by id, or nil
+local function GetTabById(id)
+    for _, t in ipairs(tabs) do
+        if t.id == id then return t end
+    end
+    return nil
+end
+
+--- Rebuilds sidebar button LayoutOrder / search filter
+local function RefreshSidebar(filter)
+    filter = (filter or ""):lower()
+    local order = 1
+    for _, t in ipairs(tabs) do
+        if t.sideBtn then
+            local visible = filter == "" or t.name:lower():find(filter, 1, true)
+            t.sideBtn.Visible     = visible ~= nil
+            t.sideBtn.LayoutOrder = order
+            order += 1
+        end
+    end
+    -- Update empty state
+    EmptyLabel.Visible = #tabs == 0
+end
+
+--- Switches the active tab with a smooth crossfade
+local function SwitchTab(id)
+    if activeTabId == id then return end
+
+    -- Hide current
+    if activeTabId then
+        local old = GetTabById(activeTabId)
+        if old and old.page then
+            Tween(old.page, TWEEN_FAST, { BackgroundTransparency = 1 })
+            old.page.Visible = false
+        end
+        if old and old.sideBtn then
+            Tween(old.sideBtn, TWEEN_FAST, { BackgroundColor3 = Theme.TabInactive })
+            local lbl = old.sideBtn:FindFirstChildWhichIsA("TextLabel")
+            if lbl then Tween(lbl, TWEEN_FAST, { TextColor3 = Theme.TextSecondary }) end
+        end
+    end
+
+    activeTabId = id
+    local tab = GetTabById(id)
+    if not tab then
+        HeaderTabName.Text = "No Tab Selected"
+        return
+    end
+
+    -- Show new tab
+    tab.page.Visible = true
+    tab.page.BackgroundTransparency = 1
+    Tween(tab.page, TWEEN_MED, { BackgroundTransparency = 0 })
+
+    -- Highlight sidebar button
+    if tab.sideBtn then
+        Tween(tab.sideBtn, TWEEN_FAST, { BackgroundColor3 = Theme.TabActive })
+        local lbl = tab.sideBtn:FindFirstChildWhichIsA("TextLabel")
+        if lbl then Tween(lbl, TWEEN_FAST, { TextColor3 = Theme.TextPrimary }) end
+    end
+
+    HeaderTabName.Text = "  " .. tab.name
+    EmptyLabel.Visible = false
+
+    Notify("Tab Opened", "Switched to: " .. tab.name, "info", 2)
+end
+
+--- Renames a tab (double-click on sidebar button triggers this)
+local function RenameTab(id)
+    local tab = GetTabById(id)
+    if not tab then return end
+
+    -- Build a small rename popup over the sidebar button
+    local overlay = Instance.new("Frame")
+    overlay.Size             = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundColor3 = Theme.Overlay
+    overlay.BackgroundTransparency = 0.3
+    overlay.ZIndex           = 100
+    overlay.Parent           = ScreenGui
+    Corner(0, overlay)
+
+    local popup = Instance.new("Frame")
+    popup.Size             = UDim2.new(0, 300, 0, 100)
+    popup.Position         = UDim2.new(0.5, -150, 0.5, -50)
+    popup.BackgroundColor3 = Theme.Surface
+    popup.BorderSizePixel  = 0
+    popup.ZIndex           = 101
+    popup.Parent           = ScreenGui
+    Corner(12, popup)
+    Stroke(Theme.Accent, 1.5, popup)
+
+    MakeLabel({
+        Text      = "Rename Tab",
+        Font      = Enum.Font.GothamBold,
+        Color     = Theme.TextPrimary,
+        Size      = 14,
+        FrameSize = UDim2.new(1, 0, 0, 36),
+        ZIndex    = 102,
+        Parent    = popup,
+        XAlign    = Enum.TextXAlignment.Center,
+        YAlign    = Enum.TextYAlignment.Center,
+    })
+
+    local inp = Instance.new("TextBox")
+    inp.Size             = UDim2.new(1, -20, 0, 32)
+    inp.Position         = UDim2.new(0, 10, 0, 38)
+    inp.BackgroundColor3 = Theme.SurfaceAlt
+    inp.Text             = tab.name
+    inp.TextColor3       = Theme.TextPrimary
+    inp.Font             = Enum.Font.Gotham
+    inp.TextSize         = 13
+    inp.BorderSizePixel  = 0
+    inp.ZIndex           = 102
+    inp.ClearTextOnFocus = false
+    inp.Parent           = popup
+    Corner(8, inp)
+    Stroke(Theme.Stroke, 1, inp)
+    inp:CaptureFocus()
+
+    local function confirm()
+        local newName = inp.Text:match("^%s*(.-)%s*$") -- trim whitespace
+        if newName and #newName > 0 then
+            tab.name = newName
+            -- Update sidebar label
+            local lbl = tab.sideBtn:FindFirstChild("TabNameLabel")
+            if lbl then lbl.Text = newName end
+            if activeTabId == id then
+                HeaderTabName.Text = "  " .. newName
+            end
+            Notify("Tab Renamed", "New name: " .. newName, "success", 2)
+        end
+        overlay:Destroy()
+        popup:Destroy()
+    end
+
+    inp.FocusLost:Connect(function(enterPressed)
+        if enterPressed then confirm() end
+    end)
+
+    -- Confirm button
+    local confirmBtn = Instance.new("TextButton")
+    confirmBtn.Size             = UDim2.new(1, -20, 0, 0)  -- auto height via padding
+    confirmBtn.Position         = UDim2.new(0, 10, 1, -4)
+    confirmBtn.BackgroundTransparency = 1
+    confirmBtn.Text             = ""
+    confirmBtn.ZIndex           = 102
+    confirmBtn.Parent           = popup
+
+    -- Click outside to cancel
+    overlay.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            overlay:Destroy()
+            popup:Destroy()
+        end
+    end)
+end
+
+--- Closes/removes a tab
+local function CloseTab(id)
+    local tabIndex = nil
+    for i, t in ipairs(tabs) do
+        if t.id == id then tabIndex = i break end
+    end
+    if not tabIndex then return end
+
+    local tab = tabs[tabIndex]
+    local tabName = tab.name
+
+    -- Clean up GUI
+    if tab.sideBtn then tab.sideBtn:Destroy() end
+    if tab.page    then tab.page:Destroy()    end
+
+    table.remove(tabs, tabIndex)
+
+    -- If we closed the active tab, switch to adjacent
+    if activeTabId == id then
+        activeTabId = nil
+        if #tabs > 0 then
+            local nextIdx = math.min(tabIndex, #tabs)
+            SwitchTab(tabs[nextIdx].id)
+        else
+            HeaderTabName.Text = "No Tab Selected"
+            EmptyLabel.Visible = true
+        end
+    end
+
+    RefreshSidebar(SearchBox.Text)
+    Notify("Tab Closed", "Removed: " .. tabName, "warning", 2)
+end
+
+--- Creates a brand new tab
+local function CreateTab(name)
+    tabCounter += 1
+    local id     = tabCounter
+    name = name or ("Tab " .. id)
+
+    -- ── SIDEBAR BUTTON ─────────────────────────────────────
+    local sideBtn = Instance.new("Frame")
+    sideBtn.Size             = UDim2.new(1, -4, 0, 34)
+    sideBtn.BackgroundColor3 = Theme.TabInactive
+    sideBtn.BorderSizePixel  = 0
+    sideBtn.ZIndex           = 12
+    sideBtn.LayoutOrder      = tabCounter
+    sideBtn.Parent           = TabListFrame
+    Corner(8, sideBtn)
+
+    -- Hover effect
+    sideBtn.MouseEnter:Connect(function()
+        if activeTabId ~= id then
+            Tween(sideBtn, TWEEN_FAST, { BackgroundColor3 = Theme.TabHover })
+        end
+    end)
+    sideBtn.MouseLeave:Connect(function()
+        if activeTabId ~= id then
+            Tween(sideBtn, TWEEN_FAST, { BackgroundColor3 = Theme.TabInactive })
+        end
+    end)
+
+    -- Icon dot
+    local dot = Instance.new("Frame")
+    dot.Size             = UDim2.new(0, 6, 0, 6)
+    dot.Position         = UDim2.new(0, 10, 0.5, -3)
+    dot.BackgroundColor3 = Theme.AccentDim
+    dot.BorderSizePixel  = 0
+    dot.ZIndex           = 13
+    dot.Parent           = sideBtn
+    Corner(3, dot)
+
+    -- Tab name label
+    local nameLabel = MakeLabel({
+        Text      = name,
+        Font      = Enum.Font.Gotham,
+        Color     = Theme.TextSecondary,
+        Size      = 12,
+        FrameSize = UDim2.new(1, -52, 1, 0),
+        Position  = UDim2.new(0, 24, 0, 0),
+        ZIndex    = 13,
+        Parent    = sideBtn,
+        XAlign    = Enum.TextXAlignment.Left,
+        Truncate  = Enum.TextTruncate.AtEnd,
+    })
+    nameLabel.Name = "TabNameLabel"
+
+    -- Close (×) button on sidebar entry
+    local sideClose = Instance.new("TextButton")
+    sideClose.Size             = UDim2.new(0, 22, 0, 22)
+    sideClose.Position         = UDim2.new(1, -26, 0.5, -11)
+    sideClose.BackgroundColor3 = Theme.SurfaceAlt
+    sideClose.Text             = "✕"
+    sideClose.TextColor3       = Theme.TextMuted
+    sideClose.Font             = Enum.Font.GothamBold
+    sideClose.TextSize         = 10
+    sideClose.BorderSizePixel  = 0
+    sideClose.ZIndex           = 14
+    sideClose.Parent           = sideBtn
+    Corner(5, sideClose)
+    sideClose.BackgroundTransparency = 1
+    sideClose.MouseEnter:Connect(function()
+        Tween(sideClose, TWEEN_FAST, { BackgroundTransparency = 0, TextColor3 = Theme.Danger })
+    end)
+    sideClose.MouseLeave:Connect(function()
+        Tween(sideClose, TWEEN_FAST, { BackgroundTransparency = 1, TextColor3 = Theme.TextMuted })
+    end)
+    sideClose.MouseButton1Click:Connect(function()
+        CloseTab(id)
+    end)
+
+    -- Click to select tab / double-click to rename
+    local lastClick = 0
+    local clickDetector = Instance.new("TextButton")
+    clickDetector.Size             = UDim2.new(1, -28, 1, 0)
+    clickDetector.BackgroundTransparency = 1
+    clickDetector.Text             = ""
+    clickDetector.ZIndex           = 13
+    clickDetector.Parent           = sideBtn
+
+    clickDetector.MouseButton1Click:Connect(function()
+        local now = tick()
+        if now - lastClick < 0.35 then
+            -- Double-click: rename
+            RenameTab(id)
+        else
+            -- Single-click: switch
+            SwitchTab(id)
+        end
+        lastClick = now
+    end)
+
+    -- ── CONTENT PAGE ───────────────────────────────────────
+    local page = Instance.new("Frame")
+    page.Name             = "TabPage_" .. id
+    page.Size             = UDim2.new(1, 0, 1, 0)
+    page.BackgroundColor3 = Theme.Panel
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel  = 0
+    page.Visible          = false
+    page.ZIndex           = 11
+    page.Parent           = TabContentHolder
+
+    -- Line number gutter
+    local Gutter = Instance.new("Frame")
+    Gutter.Size             = UDim2.new(0, 36, 1, 0)
+    Gutter.BackgroundColor3 = Theme.SurfaceAlt
+    Gutter.BorderSizePixel  = 0
+    Gutter.ZIndex           = 12
+    Gutter.Parent           = page
+    Corner(8, Gutter)
+    -- Line number label (static decoration)
+    local gutterText = ""
+    for i = 1, 40 do
+        gutterText = gutterText .. tostring(i) .. "\n"
+    end
+    MakeLabel({
+        Text      = gutterText,
+        Font      = Enum.Font.Code,
+        Color     = Theme.TextMuted,
+        Size      = 11,
+        FrameSize = UDim2.new(1, 0, 1, 0),
+        ZIndex    = 13,
+        Parent    = Gutter,
+        XAlign    = Enum.TextXAlignment.Center,
+        YAlign    = Enum.TextYAlignment.Top,
+    })
+
+    -- Actual editable text area
+    local textBox = Instance.new("TextBox")
+    textBox.Size             = UDim2.new(1, -44, 1, 0)
+    textBox.Position         = UDim2.new(0, 44, 0, 0)
+    textBox.BackgroundColor3 = Theme.Background
+    textBox.Text             = "-- " .. name .. "\n-- Double-click the tab name to rename\n-- Type your script notes here...\n\n"
+    textBox.TextColor3       = Theme.TextPrimary
+    textBox.Font             = Enum.Font.Code
+    textBox.TextSize         = 13
+    textBox.TextXAlignment   = Enum.TextXAlignment.Left
+    textBox.TextYAlignment   = Enum.TextYAlignment.Top
+    textBox.MultiLine        = true
+    textBox.ClearTextOnFocus = false
+    textBox.BorderSizePixel  = 0
+    textBox.ZIndex           = 12
+    textBox.TextWrapped      = false
+    textBox.Parent           = page
+    Corner(8, textBox)
+    Stroke(Theme.Stroke, 1, textBox)
+
+    -- Update header info when cursor moves
+    textBox:GetPropertyChangedSignal("CursorPosition"):Connect(function()
+        local txt   = textBox.Text
+        local pos   = textBox.CursorPosition
+        if pos < 0 then return end
+        local before = txt:sub(1, pos - 1)
+        local lines  = select(2, before:gsub("\n", "\n")) + 1
+        local lastNL = before:find("\n[^\n]*$") or 0
+        local col    = pos - lastNL
+        if activeTabId == id then
+            HeaderInfo.Text = "Ln " .. lines .. "  Col " .. col
+        end
+    end)
+
+    -- ── STORE TAB DATA ─────────────────────────────────────
+    local tabData = {
+        id      = id,
+        name    = name,
+        content = "",
+        sideBtn = sideBtn,
+        page    = page,
+        textBox = textBox,
+    }
+    table.insert(tabs, tabData)
+    RefreshSidebar(SearchBox.Text)
+
+    -- Animate the new sidebar button in
+    sideBtn.Size = UDim2.new(1, -4, 0, 0)
+    Tween(sideBtn, TWEEN_BOUNCE, { Size = UDim2.new(1, -4, 0, 34) })
+
+    -- Switch to the new tab
+    SwitchTab(id)
+
+    return tabData
+end
+
+-- ============================================================
+-- SEARCH FILTER WIRING
+-- ============================================================
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    RefreshSidebar(SearchBox.Text)
+end)
+
+-- ============================================================
+-- ADD TAB BUTTON WIRING
+-- ============================================================
+AddTabBtn.MouseButton1Click:Connect(function()
+    CreateTab()
+end)
+
+-- ============================================================
+-- SETTINGS PANEL
+-- ============================================================
+local settingsOpen = false
+
+local SettingsPanel = Instance.new("Frame")
+SettingsPanel.Name             = "SettingsPanel"
+SettingsPanel.Size             = UDim2.new(0, 230, 0, 200)
+SettingsPanel.Position         = UDim2.new(1, -250, 0, 50)
+SettingsPanel.BackgroundColor3 = Theme.Surface
+SettingsPanel.BorderSizePixel  = 0
+SettingsPanel.ZIndex           = 30
+SettingsPanel.Visible          = false
+SettingsPanel.Parent           = MainWindow
+Corner(12, SettingsPanel)
+Stroke(Theme.StrokeAccent, 1.5, SettingsPanel)
+
+MakeLabel({
+    Text      = "⚙  Theme Settings",
+    Font      = Enum.Font.GothamBold,
+    Color     = Theme.TextPrimary,
+    Size      = 13,
+    FrameSize = UDim2.new(1, 0, 0, 36),
+    ZIndex    = 31,
+    Parent    = SettingsPanel,
+    XAlign    = Enum.TextXAlignment.Center,
+    YAlign    = Enum.TextYAlignment.Center,
+})
+
+-- A few theme preset buttons
+local themePresets = {
+    { name = "Purple Dusk",  accent = Color3.fromRGB(120, 80,  255), bg = Color3.fromRGB(15, 15, 20)  },
+    { name = "Ocean Blue",   accent = Color3.fromRGB(50,  140, 255), bg = Color3.fromRGB(10, 16, 24)  },
+    { name = "Emerald",      accent = Color3.fromRGB(50,  200, 130), bg = Color3.fromRGB(10, 20, 16)  },
+    { name = "Crimson",      accent = Color3.fromRGB(220, 60,  80),  bg = Color3.fromRGB(20, 12, 14)  },
+}
+
+local settingsLayout = Instance.new("UIListLayout")
+settingsLayout.Padding           = UDim.new(0, 4)
+settingsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+settingsLayout.Parent            = SettingsPanel
+
+local settingsPad = Instance.new("UIPadding")
+settingsPad.PaddingTop    = UDim.new(0, 40)
+settingsPad.PaddingLeft   = UDim.new(0, 10)
+settingsPad.PaddingRight  = UDim.new(0, 10)
+settingsPad.Parent        = SettingsPanel
+
+for _, preset in ipairs(themePresets) do
+    local pb = Instance.new("TextButton")
+    pb.Size             = UDim2.new(1, 0, 0, 28)
+    pb.BackgroundColor3 = Theme.SurfaceAlt
+    pb.Text             = preset.name
+    pb.TextColor3       = Theme.TextSecondary
+    pb.Font             = Enum.Font.Gotham
+    pb.TextSize         = 12
+    pb.BorderSizePixel  = 0
+    pb.ZIndex           = 31
+    pb.Parent           = SettingsPanel
+    Corner(7, pb)
+
+    -- Color dot
+    local dot2 = Instance.new("Frame")
+    dot2.Size             = UDim2.new(0, 10, 0, 10)
+    dot2.Position         = UDim2.new(0, 8, 0.5, -5)
+    dot2.BackgroundColor3 = preset.accent
+    dot2.BorderSizePixel  = 0
+    dot2.ZIndex           = 32
+    dot2.Parent           = pb
+    Corner(5, dot2)
+
+    AddHover(pb, Theme.SurfaceAlt, Theme.SurfaceAlt:Lerp(Color3.new(1,1,1), 0.05))
+
+    pb.MouseButton1Click:Connect(function()
+        -- Apply theme preview (accent color)
+        Theme.Accent      = preset.accent
+        Theme.AccentDim   = preset.accent:Lerp(Color3.new(0,0,0), 0.5)
+        Theme.Background  = preset.bg
+        Tween(MainWindow,     TWEEN_MED, { BackgroundColor3 = preset.bg    })
+        Tween(AccentLine,     TWEEN_MED, { BackgroundColor3 = preset.accent })
+        Tween(AvatarFrame,    TWEEN_MED, { BackgroundColor3 = preset.accent })
+        Tween(AddTabBtn,      TWEEN_MED, { BackgroundColor3 = Theme.AccentDim })
+        Notify("Theme Applied", preset.name .. " theme loaded!", "success", 2)
+        settingsOpen = false
+        SettingsPanel.Visible = false
+    end)
+end
+
+SettingsBtn.MouseButton1Click:Connect(function()
+    settingsOpen = not settingsOpen
+    SettingsPanel.Visible = settingsOpen
+    if settingsOpen then
+        SettingsPanel.Size = UDim2.new(0, 230, 0, 10)
+        Tween(SettingsPanel, TWEEN_BOUNCE, { Size = UDim2.new(0, 230, 0, 200) })
+    end
+end)
+
+-- ============================================================
+-- INITIAL SETUP
+-- ============================================================
+
+-- Create two starter tabs so the UI feels populated right away
+CreateTab("Welcome")
+task.delay(0.1, function()
+    local welcomeTab = GetTabById(1)
+    if welcomeTab and welcomeTab.textBox then
+        welcomeTab.textBox.Text =
+[[-- ╔══════════════════════════════════════════╗
+-- ║   Babyutmonn2o22Mains Scripts v1.0      ║
+-- ║   Welcome to your Script Dashboard!     ║
+-- ╚══════════════════════════════════════════╝
+
+-- HOW TO USE:
+-- • Click "+ New Tab" in the sidebar to add tabs
+-- • Single-click a tab to switch to it
+-- • Double-click a tab name to rename it
+-- • Click ✕ on a tab to remove it
+-- • Use the search bar to filter tabs
+-- • Click ⚙ for theme options
+
+-- TIP: Each tab has its own independent
+-- text area for organizing your scripts!
+
+print("Dashboard loaded successfully!")
+]]
+    end
+end)
+
+task.delay(0.2, function()
+    CreateTab("My Notes")
+end)
+
+-- Welcome notification
+task.delay(0.6, function()
+    Notify(
+        "Dashboard Ready",
+        "Welcome, " .. LocalPlayer.DisplayName .. "!",
+        "success",
+        4
+    )
+end)
+
+-- ============================================================
+-- CLEANUP on character respawn (optional quality-of-life)
+-- ============================================================
+LocalPlayer.CharacterAdded:Connect(function()
+    -- The GUI persists because ResetOnSpawn = false
+    -- This is intentional for a persistent dashboard
+end)
+
+print("[BabyutmonnDashboard] Script Management Dashboard loaded successfully.")
